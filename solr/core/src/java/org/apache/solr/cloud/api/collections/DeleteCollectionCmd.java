@@ -52,9 +52,7 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.apache.solr.common.params.CollectionAdminParams.COLOCATED_WITH;
 import static org.apache.solr.common.params.CollectionAdminParams.FOLLOW_ALIASES;
-import static org.apache.solr.common.params.CollectionAdminParams.WITH_COLLECTION;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.DELETE;
 import static org.apache.solr.common.params.CommonAdminParams.ASYNC;
 import static org.apache.solr.common.params.CommonParams.NAME;
@@ -94,7 +92,12 @@ public class DeleteCollectionCmd implements OverseerCollectionMessageHandler.Cmd
       collection = extCollection;
     }
 
-    checkNotColocatedWith(zkStateReader, collection);
+    // verify the placement modifications caused by the deletion are allowed
+    DocCollection coll = state.getCollectionOrNull(collection);
+    if (coll != null) {
+      Assign.AssignStrategy assignStrategy = Assign.createAssignStrategy(ocmh.overseer.getCoreContainer(), state, coll);
+      assignStrategy.verifyDeleteCollection(ocmh.cloudManager, coll);
+    }
 
     final boolean deleteHistory = message.getBool(CoreAdminParams.DELETE_METRICS_HISTORY, true);
 
@@ -261,22 +264,5 @@ public class DeleteCollectionCmd implements OverseerCollectionMessageHandler.Cmd
         .filter(e -> e.getValue().contains(collection) || e.getValue().contains(extCollection))
         .map(Map.Entry::getKey) // alias name
         .collect(Collectors.toList());
-  }
-
-  private void checkNotColocatedWith(ZkStateReader zkStateReader, String collection) throws Exception {
-    DocCollection docCollection = zkStateReader.getClusterState().getCollectionOrNull(collection);
-    if (docCollection != null)  {
-      String colocatedWith = docCollection.getStr(COLOCATED_WITH);
-      if (colocatedWith != null) {
-        DocCollection colocatedCollection = zkStateReader.getClusterState().getCollectionOrNull(colocatedWith);
-        if (colocatedCollection != null && collection.equals(colocatedCollection.getStr(WITH_COLLECTION))) {
-          // todo how do we clean up if reverse-link is not present?
-          // can't delete this collection because it is still co-located with another collection
-          throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-              "Collection: " + collection + " is co-located with collection: " + colocatedWith
-                  + " remove the link using modify collection API or delete the co-located collection: " + colocatedWith);
-        }
-      }
-    }
   }
 }

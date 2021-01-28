@@ -19,17 +19,7 @@ package org.apache.solr.handler.admin;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -105,7 +95,7 @@ import static org.apache.solr.client.solrj.response.RequestStatusState.NOT_FOUND
 import static org.apache.solr.client.solrj.response.RequestStatusState.RUNNING;
 import static org.apache.solr.client.solrj.response.RequestStatusState.SUBMITTED;
 import static org.apache.solr.cloud.Overseer.QUEUE_OPERATION;
-import static org.apache.solr.cloud.api.collections.OverseerCollectionMessageHandler.COLL_PROP_PREFIX;
+import static org.apache.solr.common.params.CollectionAdminParams.PROPERTY_PREFIX;
 import static org.apache.solr.cloud.api.collections.OverseerCollectionMessageHandler.CREATE_NODE_SET;
 import static org.apache.solr.cloud.api.collections.OverseerCollectionMessageHandler.CREATE_NODE_SET_EMPTY;
 import static org.apache.solr.cloud.api.collections.OverseerCollectionMessageHandler.CREATE_NODE_SET_SHUFFLE;
@@ -118,6 +108,7 @@ import static org.apache.solr.cloud.api.collections.OverseerCollectionMessageHan
 import static org.apache.solr.cloud.api.collections.RoutedAlias.CREATE_COLLECTION_PREFIX;
 import static org.apache.solr.common.SolrException.ErrorCode.BAD_REQUEST;
 import static org.apache.solr.common.cloud.DocCollection.DOC_ROUTER;
+import static org.apache.solr.common.cloud.DocCollection.PER_REPLICA_STATE;
 import static org.apache.solr.common.cloud.ZkStateReader.COLLECTION_PROP;
 import static org.apache.solr.common.cloud.ZkStateReader.NRT_REPLICAS;
 import static org.apache.solr.common.cloud.ZkStateReader.PROPERTY_PROP;
@@ -136,7 +127,6 @@ import static org.apache.solr.common.params.CollectionAdminParams.FOLLOW_ALIASES
 import static org.apache.solr.common.params.CollectionAdminParams.PROPERTY_NAME;
 import static org.apache.solr.common.params.CollectionAdminParams.PROPERTY_VALUE;
 import static org.apache.solr.common.params.CollectionAdminParams.SKIP_NODE_ASSIGNMENT;
-import static org.apache.solr.common.params.CollectionAdminParams.WITH_COLLECTION;
 import static org.apache.solr.common.params.CollectionParams.CollectionAction.*;
 import static org.apache.solr.common.params.CommonAdminParams.ASYNC;
 import static org.apache.solr.common.params.CommonAdminParams.IN_PLACE_MOVE;
@@ -230,8 +220,8 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
         throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Unknown action: " + a);
       }
       CollectionOperation operation = CollectionOperation.get(action);
-      if (log.isInfoEnabled()) {
-        log.info("Invoked Collection Action :{} with params {} and sendToOCPQueue={}"
+      if (log.isDebugEnabled()) {
+        log.debug("Invoked Collection Action :{} with params {} and sendToOCPQueue={}"
             , action.toLower(), req.getParamString(), operation.sendToOCPQueue);
       }
       MDCLoggingContext.setCollection(req.getParams().get(COLLECTION));
@@ -463,7 +453,7 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
           TLOG_REPLICAS,
           NRT_REPLICAS,
           WAIT_FOR_FINAL_STATE,
-          WITH_COLLECTION,
+          PER_REPLICA_STATE,
           ALIAS);
 
       if (props.get(REPLICATION_FACTOR) != null && props.get(NRT_REPLICAS) != null) {
@@ -496,7 +486,7 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
       if (shardsParam == null) h.copyFromClusterProp(props, NUM_SLICES);
       for (String prop : ImmutableSet.of(NRT_REPLICAS, PULL_REPLICAS, TLOG_REPLICAS))
         h.copyFromClusterProp(props, prop);
-      copyPropertiesWithPrefix(req.getParams(), props, COLL_PROP_PREFIX);
+      copyPropertiesWithPrefix(req.getParams(), props, PROPERTY_PREFIX);
       return copyPropertiesWithPrefix(req.getParams(), props, "router.");
 
     }),
@@ -747,7 +737,7 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
           SPLIT_FUZZ,
           SPLIT_BY_PREFIX,
           FOLLOW_ALIASES);
-      return copyPropertiesWithPrefix(req.getParams(), map, COLL_PROP_PREFIX);
+      return copyPropertiesWithPrefix(req.getParams(), map, PROPERTY_PREFIX);
     }),
     DELETESHARD_OP(DELETESHARD, (req, rsp, h) -> {
       Map<String, Object> map = copy(req.getParams().required(), null,
@@ -785,7 +775,7 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
           CREATE_NODE_SET,
           WAIT_FOR_FINAL_STATE,
           FOLLOW_ALIASES);
-      return copyPropertiesWithPrefix(req.getParams(), map, COLL_PROP_PREFIX);
+      return copyPropertiesWithPrefix(req.getParams(), map, PROPERTY_PREFIX);
     }),
     DELETEREPLICA_OP(DELETEREPLICA, (req, rsp, h) -> {
       Map<String, Object> map = copy(req.getParams().required(), null,
@@ -927,7 +917,7 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
           CREATE_NODE_SET,
           FOLLOW_ALIASES,
           SKIP_NODE_ASSIGNMENT);
-      return copyPropertiesWithPrefix(req.getParams(), props, COLL_PROP_PREFIX);
+      return copyPropertiesWithPrefix(req.getParams(), props, PROPERTY_PREFIX);
     }),
     OVERSEERSTATUS_OP(OVERSEERSTATUS, (req, rsp, h) -> new LinkedHashMap<>()),
 
@@ -968,8 +958,8 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
           PROPERTY_VALUE_PROP);
       copy(req.getParams(), map, SHARD_UNIQUE);
       String property = (String) map.get(PROPERTY_PROP);
-      if (!property.startsWith(COLL_PROP_PREFIX)) {
-        property = COLL_PROP_PREFIX + property;
+      if (!property.startsWith(PROPERTY_PREFIX)) {
+        property = PROPERTY_PREFIX + property;
       }
 
       boolean uniquePerSlice = Boolean.parseBoolean((String) map.get(SHARD_UNIQUE));
@@ -1002,8 +992,8 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
           PROPERTY_PROP);
       Boolean shardUnique = Boolean.parseBoolean(req.getParams().get(SHARD_UNIQUE));
       String prop = req.getParams().get(PROPERTY_PROP).toLowerCase(Locale.ROOT);
-      if (!StringUtils.startsWith(prop, COLL_PROP_PREFIX)) {
-        prop = COLL_PROP_PREFIX + prop;
+      if (!StringUtils.startsWith(prop, PROPERTY_PREFIX)) {
+        prop = PROPERTY_PREFIX + prop;
       }
 
       if (!shardUnique && !SliceMutator.SLICE_UNIQUE_BOOLEAN_PROPERTIES.contains(prop)) {
@@ -1021,7 +1011,7 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
     // XXX should this command support followAliases?
     MODIFYCOLLECTION_OP(MODIFYCOLLECTION, (req, rsp, h) -> {
       Map<String, Object> m = copy(req.getParams(), null, CollectionAdminRequest.MODIFIABLE_COLLECTION_PROPERTIES);
-      copyPropertiesWithPrefix(req.getParams(), m, COLL_PROP_PREFIX);
+      copyPropertiesWithPrefix(req.getParams(), m, PROPERTY_PREFIX);
       if (m.isEmpty()) {
         throw new SolrException(ErrorCode.BAD_REQUEST,
             formatString("no supported values provided {0}", CollectionAdminRequest.MODIFIABLE_COLLECTION_PROPERTIES.toString()));
@@ -1149,7 +1139,7 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
       // from CREATE_OP:
       copy(req.getParams(), params, COLL_CONF, REPLICATION_FACTOR, NRT_REPLICAS, TLOG_REPLICAS,
           PULL_REPLICAS, CREATE_NODE_SET, CREATE_NODE_SET_SHUFFLE);
-      copyPropertiesWithPrefix(req.getParams(), params, COLL_PROP_PREFIX);
+      copyPropertiesWithPrefix(req.getParams(), params, PROPERTY_PREFIX);
       return params;
     }),
     CREATESNAPSHOT_OP(CREATESNAPSHOT, (req, rsp, h) -> {
@@ -1323,6 +1313,7 @@ public class CollectionsHandler extends RequestHandlerBase implements Permission
         //TODO only increase terms of replicas less out-of-sync
         liveReplicas.stream()
             .filter(rep -> zkShardTerms.registered(rep.getName()))
+            // TODO should this all be done at once instead of increasing each replica individually?
             .forEach(rep -> zkShardTerms.setTermEqualsToLeader(rep.getName()));
       }
 
